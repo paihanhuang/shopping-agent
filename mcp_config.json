@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "shopping-agent": {
+      "command": "python",
+      "args": ["-m", "mcp_agents.mcp_server"],
+      "cwd": "/home/etem/shopping-agent",
+      "env": {
+        "PYTHONPATH": "/home/etem/shopping-agent"
+      }
+    }
+  }
+}
+

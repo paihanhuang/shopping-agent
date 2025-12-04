@@ -25,26 +25,34 @@ if not os.getenv("TAVILY_API_KEY"):
 
 
 # Simplified search prompt (cashback and credit cards handled separately)
-SEARCH_PROMPT = """You are an expert shopping assistant. Search for product prices only.
+SEARCH_PROMPT = """You are an expert shopping assistant. Search for product prices.
 
 SEARCH INSTRUCTIONS:
-1. Search at least 20 different retailers:
-   - "[product] site:amazon.com", "[product] site:bestbuy.com", etc.
-   - "[product] price", "[product] best deals"
+1. Search multiple retailers using site-specific searches:
+   - "[product] site:amazon.com"
+   - "[product] site:bestbuy.com"
+   - "[product] site:walmart.com"
+   - "[product] site:target.com"
+   - "[product] site:costco.com"
+   - "[product] site:bhphotovideo.com"
+   - "[product] site:newegg.com"
 
-2. For each retailer found, report:
+2. For each result found, report:
    - Retailer Name
-   - Product URL (direct product page, not homepage)
+   - Product URL: Use the URL from search results. Prefer URLs with product IDs.
    - Base Price
    - Tax (9.25% for ZIP 94022)
-   - Shipping cost
-   - Total Price (before cashback)
+   - Shipping cost (Free if not specified)
+   - Total Price
 
-3. ONLY include actual retailers:
+3. URL PREFERENCES (in order):
+   - Best: Direct product page URL from search results
+   - OK: Product search URL if direct page not available
+   - Include whatever URL the search returns - we'll verify later
+
+4. ONLY include actual retailers:
    ✅ Amazon, Best Buy, Walmart, Target, Costco, B&H, Adorama, Newegg, Apple, Samsung
-   ❌ EXCLUDE: news sites, deal aggregators, shopping portals, price comparison sites
-
-4. Format as numbered list. Include summary at end.
+   ❌ EXCLUDE: news sites, reviews, deal aggregators, shopping portals
 
 Destination: ZIP 94022 (Los Altos, California).
 """
@@ -54,8 +62,8 @@ Destination: ZIP 94022 (Los Altos, California).
 CASHBACK_PROMPT = """You are a cashback research specialist. Find current cashback rates from shopping portals.
 
 SEARCH INSTRUCTIONS:
-1. Search for cashback rates for these retailers:
-   Amazon, Best Buy, Walmart, Target, Costco, B&H Photo, Adorama, Newegg, Apple, Samsung
+1. ONLY search for cashback rates for the specific retailers provided in the query.
+   Do NOT search for retailers not in the list.
 
 2. Search portals:
    - Rakuten: "Rakuten [retailer] cashback"
@@ -119,15 +127,31 @@ SEARCH INSTRUCTIONS:
 
 
 # Verification prompt
-VERIFICATION_PROMPT = """You are a data verification assistant. Review and correct the shopping results.
+VERIFICATION_PROMPT = """You are a data verification assistant. Review and clean shopping results.
 
 VERIFICATION TASKS:
-1. REMOVE DUPLICATES: Keep only one entry per retailer
-2. REMOVE NON-RETAILERS: news sites, deal aggregators, shopping portals
-3. VERIFY URLs: Must be product pages, not homepages or search results
-4. VERIFY PRODUCT: URL must match exact product searched
 
-Return CORRECTED list only.
+1. REMOVE DUPLICATES: Keep only one entry per retailer
+
+2. REMOVE NON-RETAILERS: 
+   - News sites, review sites, deal aggregators
+   - Shopping portals (Rakuten, Honey, etc.)
+   - Price comparison sites
+
+3. URL QUALITY CHECK:
+   - ✅ Direct product URLs: Keep as-is
+   - ⚠️ Search result URLs: Keep but add note "verify URL"
+   - ❌ Homepage only URLs: Remove entry
+
+4. KEEP entries that have:
+   - A retailer name
+   - A price
+   - Some form of URL (even if search URL)
+
+OUTPUT:
+- Return cleaned list with all valid retailer entries
+- For URLs that need verification, add: ⚠️ (verify link)
+- Keep results useful - don't over-filter
 """
 
 
@@ -142,7 +166,7 @@ INSTRUCTIONS:
 
 OUTPUT FORMAT for each retailer:
 1. **[Retailer Name]**
-   - URL: [product URL]
+   - URL: [product URL] (add ⚠️ if marked for verification)
    - Base Price: $XX.XX
    - Tax (9.25%): $XX.XX
    - Shipping: Free / $XX.XX
@@ -159,7 +183,7 @@ End with:
 - 💳 Credit Card Strategy:
   * [Retailer]: Use [Card] for X%
   * Note: Costco only accepts Visa
-- ⚠️ Verify current rates before purchase
+- ⚠️ Note: Verify all URLs and prices before purchase
 """
 
 
@@ -184,7 +208,7 @@ class ProgressCallback(BaseCallbackHandler):
         sys.stdout.flush()
 
 
-def create_agent_with_search(system_prompt: str, callbacks=None):
+def create_agent_with_search(system_prompt: str, callbacks=None, include_urls=False):
     """Create an agent with Tavily search capability."""
     llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, callbacks=callbacks)
     tavily_search = TavilySearch(
@@ -192,6 +216,7 @@ def create_agent_with_search(system_prompt: str, callbacks=None):
         search_depth="advanced",
         include_answer=True,
         include_raw_content=False,
+        include_domains=[] if not include_urls else None,  # Allow all domains for URL extraction
     )
     return create_agent(llm, [tavily_search], system_prompt=system_prompt)
 
@@ -200,13 +225,29 @@ def search_products(query: str) -> str:
     """Search for product prices (without cashback/credit card info)."""
     print("\n📦 [Product Search] Starting...\n")
     callback = ProgressCallback(prefix="  ")
-    agent = create_agent_with_search(SEARCH_PROMPT, callbacks=[callback])
+    agent = create_agent_with_search(SEARCH_PROMPT, callbacks=[callback], include_urls=True)
     
     enhanced_query = f"""
-{query}
+Find prices for: {query}
 
-Search for prices from at least 15 different retailers.
-Format as numbered list with: Retailer, URL, Price, Tax, Shipping, Total.
+Search at these retailers (use site: searches):
+1. Amazon (site:amazon.com)
+2. Best Buy (site:bestbuy.com)
+3. Walmart (site:walmart.com)
+4. Target (site:target.com)
+5. Costco (site:costco.com)
+6. B&H Photo (site:bhphotovideo.com)
+7. Newegg (site:newegg.com)
+
+For each retailer found, report:
+- Retailer name
+- URL from search results
+- Price
+- Tax (9.25%)
+- Shipping
+- Total
+
+Include the URL exactly as it appears in the search results.
 """
     
     result = agent.invoke(
@@ -225,20 +266,39 @@ Format as numbered list with: Retailer, URL, Price, Tax, Shipping, Total.
     return ""
 
 
-def lookup_cashback_rates(product_category: str) -> str:
-    """Look up cashback rates from shopping portals (runs in parallel)."""
+def lookup_cashback_rates(retailers: list, product_category: str) -> str:
+    """
+    Look up cashback rates from shopping portals for specific retailers only.
+    
+    Args:
+        retailers: List of retailer names found in product search
+        product_category: Product category for category-specific rates
+    
+    Returns:
+        Cashback rates for each retailer
+    """
     print("\n💰 [Cashback Lookup] Starting...\n")
+    
+    if not retailers:
+        print("  ⚠️ No retailers provided, skipping cashback lookup")
+        return "No retailers to look up cashback for."
+    
     callback = ProgressCallback(prefix="  ")
     agent = create_agent_with_search(CASHBACK_PROMPT, callbacks=[callback])
+    
+    retailers_str = ", ".join(retailers)
     
     cashback_query = f"""
 Find current cashback rates for "{product_category}" category.
 
-Search for rates at: Amazon, Best Buy, Walmart, Target, Costco, B&H Photo, Adorama, Newegg, Apple, Samsung
+ONLY search for these specific retailers (from product search results):
+{retailers_str}
 
 Portals to check: Rakuten, Capital One Shopping, ShopBack
 
 Remember: Costco = No cashback, Apple = Very limited
+
+Do NOT search for any other retailers not in the list above.
 """
     
     result = agent.invoke(
@@ -387,47 +447,95 @@ def detect_product_category(query: str) -> str:
         return "General"
 
 
+def extract_retailers_from_results(product_results: str) -> list:
+    """
+    Extract retailer names from product search results.
+    
+    Args:
+        product_results: Raw product search results string
+    
+    Returns:
+        List of unique retailer names found
+    """
+    # Known retailers to look for
+    known_retailers = [
+        "Amazon", "Best Buy", "Walmart", "Target", "Costco", 
+        "B&H Photo", "B&H", "BHPhoto", "Adorama", "Newegg", 
+        "Apple", "Samsung", "GameStop", "Dell", "HP", 
+        "Lenovo", "Microsoft", "Google Store", "eBay",
+        "Micro Center", "Office Depot", "Staples", "Kohl's",
+        "Macy's", "Nordstrom", "JCPenney", "Sears"
+    ]
+    
+    found_retailers = []
+    results_lower = product_results.lower()
+    
+    for retailer in known_retailers:
+        if retailer.lower() in results_lower:
+            # Normalize B&H variations
+            if retailer in ["B&H", "BHPhoto"]:
+                if "B&H Photo" not in found_retailers:
+                    found_retailers.append("B&H Photo")
+            elif retailer not in found_retailers:
+                found_retailers.append(retailer)
+    
+    return found_retailers
+
+
 def search_product_prices(query: str) -> str:
     """
     Search for product prices with parallel lookups.
     
     Architecture:
-    1. Product Search + Cashback Lookup + Credit Card Lookup (ALL PARALLEL)
-    2. Verification
-    3. Enrichment with cashback + credit card data
+    1. Product Search (first, to find which retailers have the product)
+    2. Extract retailers from results
+    3. Cashback + Credit Card Lookup (PARALLEL, only for found retailers)
+    4. Verification
+    5. Enrichment with cashback + credit card data
     """
     # Detect product category
     category = detect_product_category(query)
     print(f"📂 Detected category: {category}")
     
-    # Common retailers for credit card lookup
-    common_retailers = ["Amazon", "Best Buy", "Walmart", "Target", "Costco", "B&H Photo", "Newegg", "Apple"]
-    
-    # Run ALL THREE lookups in PARALLEL
+    # Step 1: Run product search first
     print("\n" + "=" * 55)
-    print("🚀 Running 3 parallel searches...")
-    print("   📦 Products | 💰 Cashback | 💳 Credit Cards")
+    print("🚀 Step 1: Searching for products...")
     print("=" * 55)
     
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        # Submit all three tasks
-        product_future = executor.submit(search_products, query)
-        cashback_future = executor.submit(lookup_cashback_rates, category)
-        credit_card_future = executor.submit(lookup_credit_card_rewards, common_retailers)
-        
-        # Wait for all to complete
-        product_results = product_future.result()
-        cashback_data = cashback_future.result()
-        credit_card_data = credit_card_future.result()
+    product_results = search_products(query)
     
     if not product_results:
         return "No results found. Please try again."
     
-    # Step 2: Verify results
+    # Step 2: Extract retailers from product search results
+    found_retailers = extract_retailers_from_results(product_results)
+    print(f"\n📍 Found {len(found_retailers)} retailers: {', '.join(found_retailers)}")
+    
+    if not found_retailers:
+        # Fallback to common retailers if extraction fails
+        found_retailers = ["Amazon", "Best Buy", "Walmart", "Target", "Costco"]
+        print(f"   (Using fallback retailers: {', '.join(found_retailers)})")
+    
+    # Step 3: Run cashback + credit card lookups in PARALLEL (only for found retailers)
+    print("\n" + "=" * 55)
+    print("🚀 Step 2: Running parallel lookups for found retailers...")
+    print("   💰 Cashback | 💳 Credit Cards")
+    print("=" * 55)
+    
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        # Submit both tasks with found retailers
+        cashback_future = executor.submit(lookup_cashback_rates, found_retailers, category)
+        credit_card_future = executor.submit(lookup_credit_card_rewards, found_retailers)
+        
+        # Wait for both to complete
+        cashback_data = cashback_future.result()
+        credit_card_data = credit_card_future.result()
+    
+    # Step 4: Verify results
     print("\n" + "-" * 55)
     verified_results = verify_results(product_results, query)
     
-    # Step 3: Enrich with cashback AND credit card data
+    # Step 5: Enrich with cashback AND credit card data
     print("\n" + "-" * 55)
     final_results = enrich_with_rewards(verified_results, cashback_data, credit_card_data, query)
     
