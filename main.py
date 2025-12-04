@@ -7,6 +7,7 @@ a comprehensive comparison with recommendations.
 
 import os
 import sys
+import concurrent.futures
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_tavily import TavilySearch
@@ -23,303 +24,414 @@ if not os.getenv("TAVILY_API_KEY"):
     raise ValueError("TAVILY_API_KEY not found. Please set it in your .env file.")
 
 
-# System prompt for the shopping agent
-SYSTEM_PROMPT = """You are an expert shopping assistant specialized in finding the best deals online.
+# Simplified search prompt (cashback and credit cards handled separately)
+SEARCH_PROMPT = """You are an expert shopping assistant. Search for product prices only.
 
-Your task is to search for product prices across the web and provide comprehensive price comparisons, INCLUDING cashback offers.
+SEARCH INSTRUCTIONS:
+1. Search at least 20 different retailers:
+   - "[product] site:amazon.com", "[product] site:bestbuy.com", etc.
+   - "[product] price", "[product] best deals"
 
-IMPORTANT INSTRUCTIONS:
-1. Perform multiple searches to gather information from at least 15 DISTINCT websites/retailers.
-2. Search strategies to use:
-   - Search for "[product] price" 
-   - Search for "[product] buy online"
-   - Search for "[product] best deals"
-   - Search for "[product] site:amazon.com" (to find exact product page on Amazon)
-   - Search for "[product] site:bestbuy.com" (to find exact product page on Best Buy)
-   - Search for "[product] site:walmart.com" (repeat for each major retailer)
-   - Search for "[product] [major retailer name]" (e.g., Amazon, Walmart, Best Buy, Target, etc.)
-   - Search for "[product] discount" or "[product] sale"
-   - Search for "Rakuten [retailer name] cashback rate [product category] 2025"
-   - Search for "Capital One Shopping [retailer name] cashback"
-   - Search for "ShopBack [retailer name] [product category] cashback"
-
-3. CRITICAL - CASHBACK CATEGORY RULES:
-   Cashback rates VARY BY PRODUCT CATEGORY within each retailer. You MUST:
-   - Search for the SPECIFIC category rate, not just the general retailer rate
-   - Common category differences:
-     * Electronics/Tech: Usually LOWER rates (often 1-2%)
-     * Clothing/Apparel: Usually HIGHER rates (often 3-8%)
-     * Home/Furniture: Medium rates (often 2-5%)
-     * Beauty/Health: Often higher rates (3-10%)
-   - Example: Rakuten at Best Buy might be 1% for electronics but higher for other categories
-   - If you only find a general rate, note it as "General rate - may vary by category"
-
-4. CRITICAL - CASHBACK ACCURACY RULES:
-   - ONLY report cashback rates that you ACTUALLY FOUND in search results
-   - Match the rate to the PRODUCT CATEGORY being searched
-   - If no cashback info was found for a retailer, write "No cashback"
-   - KNOWN EXCLUSIONS (NO cashback available):
-     * Costco - No cashback on any portal
-     * T-Mobile - No Rakuten cashback
-     * Apple Store direct - Very limited/no cashback
-     * Gift cards, warranties - Usually excluded from cashback
-   - DO NOT make up or guess cashback percentages
-   - When uncertain, say "Verify on portal" instead of guessing
-
-5. CRITICAL - PRODUCT URL REQUIREMENTS:
-   For EVERY retailer, you MUST provide a DIRECT product page URL.
-   - Search "[product] site:[retailer].com" to find the exact product page
-   - The URL must contain product identifiers (SKU, product ID, or product name in path)
-   
-   ✅ VALID URLs (contain product info):
-     * https://www.amazon.com/dp/B0FQFB8FMG
-     * https://www.bestbuy.com/site/apple-airpods-pro-3/6535178.p
-     * https://www.bhphotovideo.com/c/product/1234567-REG/apple_airpods.html
-     * https://www.walmart.com/ip/Apple-AirPods-Pro-3/123456789
-   
-   ❌ INVALID URLs (do NOT use these):
-     * https://www.bhphotovideo.com (homepage)
-     * https://www.target.com (homepage)
-     * https://www.newegg.com (homepage)
-     * Any URL without product ID or specific product path
-   
-   If you CANNOT find the direct URL after searching, write:
-   "🔍 Direct link not found - Search '[product name]' on [retailer].com"
-   
-6. For each website found, extract and report in a NUMBERED LIST format (NOT a table):
-   - Website/Retailer Name (bold)
-   - Product URL (must be direct product link - see rules above)
+2. For each retailer found, report:
+   - Retailer Name
+   - Product URL (direct product page, not homepage)
    - Base Price
-   - Estimated Tax (9.25% for ZIP 94022 - Los Altos, CA)
-   - Estimated Shipping Cost (note if free shipping is available)
-   - Cashback/Rewards (category-specific rates):
-     * Rakuten: X% for [category] or "No cashback"
-     * Capital One Shopping: X% or "No cashback"  
-     * ShopBack: X% or "No cashback"
-   - 💳 Best Credit Card: Recommend the best card based on retailer category:
-     * BofA Customized Cash: 3% if category matches (Online Shopping, Gas, Dining, Travel, Drug Stores, Home Improvement), 2% grocery/wholesale
-     * Citi Double Cash: 2% flat cashback on everything
-     * Capital One Venture X: 2x miles on everything (~2% value)
-     * Chase Sapphire Reserve: 3x on travel/dining, 10x on hotels via portal, 1x other (~1.5x value with travel redemption)
-   - **TOTAL PRICE** (before cashback/rewards)
+   - Tax (9.25% for ZIP 94022)
+   - Shipping cost
+   - Total Price (before cashback)
 
-7. NEVER use markdown tables. Always use numbered lists with bullet points for each detail.
+3. ONLY include actual retailers:
+   ✅ Amazon, Best Buy, Walmart, Target, Costco, B&H, Adorama, Newegg, Apple, Samsung
+   ❌ EXCLUDE: news sites, deal aggregators, shopping portals, price comparison sites
 
-8. ONLY include retailers where you found a VALID direct product URL. Skip retailers where you only have homepage links.
+4. Format as numbered list. Include summary at end.
 
-9. ONLY INCLUDE ACTUAL RETAILERS - EXCLUDE THESE:
-   ❌ Shopping portals/cashback sites: Rakuten, ShopBack, Capital One Shopping, Honey, RetailMeNot
-   ❌ Price comparison sites: Google Shopping, PriceGrabber, Shopzilla, NexTag
-   ❌ News/review sites: CNET, TechRadar, Engadget, The Verge, Tom's Guide, PCMag, IGN
-   ❌ Deal aggregators: Slickdeals, DealNews, Brad's Deals
-   ❌ Social/forum sites: Reddit, Twitter, Facebook
+Destination: ZIP 94022 (Los Altos, California).
+"""
+
+
+# Cashback lookup prompt
+CASHBACK_PROMPT = """You are a cashback research specialist. Find current cashback rates from shopping portals.
+
+SEARCH INSTRUCTIONS:
+1. Search for cashback rates for these retailers:
+   Amazon, Best Buy, Walmart, Target, Costco, B&H Photo, Adorama, Newegg, Apple, Samsung
+
+2. Search portals:
+   - Rakuten: "Rakuten [retailer] cashback"
+   - Capital One Shopping: "Capital One Shopping [retailer]"
+   - ShopBack: "ShopBack [retailer] cashback"
+
+3. CATEGORY-SPECIFIC rates:
+   - Electronics: usually 1-2%
+   - Clothing: usually 3-8%
+   - Home/Furniture: usually 2-5%
+
+4. KNOWN EXCLUSIONS:
+   - Costco: No cashback on any portal
+   - Apple Store: Very limited/no cashback
+
+5. Output format:
+   [Retailer]: Rakuten X%, Capital One Shopping X%, ShopBack X%
+   If no cashback: "[Retailer]: No cashback"
+
+Only report rates ACTUALLY FOUND. Do NOT guess.
+"""
+
+
+# Credit card rewards lookup prompt
+CREDIT_CARD_PROMPT = """You are a credit card rewards specialist. Find the best credit card reward rates for shopping.
+
+SEARCH INSTRUCTIONS:
+1. Search for current reward rates for these credit cards:
+   - "Citi Double Cash rewards rate"
+   - "Chase Sapphire Reserve rewards categories"
+   - "Capital One Venture X rewards"
+   - "Bank of America Customized Cash rewards categories"
+   - "Amazon Prime Visa rewards"
+   - "Costco Anywhere Visa rewards"
+
+2. For each card, find:
+   - Base reward rate (on general purchases)
+   - Bonus categories and rates
+   - Any special retailer partnerships
+
+3. KNOWN RATES (verify if still current):
+   - Citi Double Cash: 2% on everything (1% buy + 1% pay)
+   - Chase Sapphire Reserve: 3x travel/dining, 1x other
+   - Capital One Venture X: 2x on everything
+   - BofA Customized Cash: 3% on chosen category, 2% grocery/wholesale, 1% other
+   - Amazon Prime Visa: 5% at Amazon/Whole Foods, 2% restaurants/gas/drugstores
+   - Costco Anywhere Visa: 4% gas, 3% restaurants/travel, 2% Costco, 1% other
+
+4. RETAILER-SPECIFIC recommendations:
+   - Amazon: Amazon Prime Visa (5%) or BofA Customized Cash (3% online)
+   - Costco: Costco Anywhere Visa (2%) - NOTE: Costco only accepts Visa
+   - Best Buy: BofA Customized Cash (3% online) or Citi Double Cash (2%)
+   - General online: BofA Customized Cash (3% if set to Online Shopping)
+
+5. Output format:
+   [Card Name]: Base rate X%, Bonus categories: [list]
    
-   ✅ ONLY include actual retailers where you can BUY the product:
-   Amazon, Best Buy, Walmart, Target, Costco, B&H Photo, Adorama, Newegg, 
-   Apple Store, Samsung, official brand stores, etc.
+   Retailer recommendations:
+   [Retailer]: Best card [Card] at X%
+"""
 
-10. BEFORE FINAL OUTPUT - URL VERIFICATION STEP:
-   Review ALL URLs in your results and verify EACH one carefully:
-   
-   A) NO DUPLICATE RETAILERS:
-      - Each retailer should appear ONLY ONCE
-      - If you have multiple entries for same retailer, keep only the best deal
-   
-   B) Check URL structure - must be PRODUCT PAGE, not search results:
-      ✅ Valid: https://www.amazon.com/dp/B0FQFB8FMG (product page)
-      ❌ Invalid: https://www.amazon.com/s?k=airpods+pro+3 (search results page)
-      ❌ Invalid: https://www.bestbuy.com/site/searchpage.jsp?... (search page)
-      ❌ Invalid: Any URL containing "/search", "/s?", "searchpage", "query="
-   
-   C) CRITICAL - Check URL points to CORRECT PRODUCT:
-      - Read the product name/model in the URL path
-      - Does it match the EXACT product being searched?
-      - Watch for WRONG products:
-        * Wrong model (e.g., "AirPods Pro 2" instead of "AirPods Pro 3")
-        * Wrong version (e.g., "PlayStation 4" instead of "PlayStation 5")
-        * Wrong variant (e.g., "128GB" instead of "256GB")
-      - If URL points to WRONG product → search again or mark as invalid
-   
-   D) For ANY invalid URL:
-      * Search again: "[exact product name and model] site:[retailer].com"
-      * Replace with correct URL
-      * Or change to: "🔍 Search '[exact product]' on [retailer].com"
-      * Remove retailer if correct product URL cannot be found
 
-11. After listing all retailers, provide:
-   - A summary of the best deals found
-   - A clear recommendation on which website offers the best value
-   - ⚠️ Note: Cashback rates are category-specific and change frequently - always verify on the portal
-   - Tips on how to stack discounts when available
+# Verification prompt
+VERIFICATION_PROMPT = """You are a data verification assistant. Review and correct the shopping results.
 
-12. Always prioritize ACCURACY over completeness. It's better to say "unknown" than to guess.
+VERIFICATION TASKS:
+1. REMOVE DUPLICATES: Keep only one entry per retailer
+2. REMOVE NON-RETAILERS: news sites, deal aggregators, shopping portals
+3. VERIFY URLs: Must be product pages, not homepages or search results
+4. VERIFY PRODUCT: URL must match exact product searched
 
-Remember: The user's shipping destination is ZIP code 94022 (Los Altos, California).
+Return CORRECTED list only.
+"""
+
+
+# Enrichment prompt
+ENRICH_PROMPT = """You are a data enrichment assistant. Combine product prices with cashback and credit card data.
+
+INSTRUCTIONS:
+1. Take the verified product results
+2. Add cashback rates from the cashback data for each retailer
+3. Add best credit card recommendation from the credit card data for each retailer
+4. Calculate potential savings
+
+OUTPUT FORMAT for each retailer:
+1. **[Retailer Name]**
+   - URL: [product URL]
+   - Base Price: $XX.XX
+   - Tax (9.25%): $XX.XX
+   - Shipping: Free / $XX.XX
+   - 💰 Cashback:
+     * Rakuten: X% (~$X.XX back)
+     * Capital One Shopping: X%
+     * ShopBack: X%
+   - 💳 Best Credit Card: [Card Name] - X% back (~$X.XX)
+   - **TOTAL: $XX.XX** (before cashback/rewards)
+   - **Potential Savings: ~$X.XX** (best cashback + credit card)
+
+End with:
+- 🏆 BEST OVERALL DEAL (price + cashback + credit card combined)
+- 💳 Credit Card Strategy:
+  * [Retailer]: Use [Card] for X%
+  * Note: Costco only accepts Visa
+- ⚠️ Verify current rates before purchase
 """
 
 
 class ProgressCallback(BaseCallbackHandler):
     """Callback handler to show progress during agent execution."""
     
-    def __init__(self):
+    def __init__(self, prefix=""):
         self.search_count = 0
-        self.current_query = ""
+        self.prefix = prefix
     
     def on_tool_start(self, serialized, input_str, **kwargs):
-        """Called when a tool starts running."""
         self.search_count += 1
-        # Extract query from input
         if isinstance(input_str, dict):
             query = input_str.get('query', input_str.get('search_query', str(input_str)))
         else:
             query = str(input_str)
-        self.current_query = query[:60] + "..." if len(query) > 60 else query
-        print(f"🔍 Search #{self.search_count}: \"{self.current_query}\"")
+        query_display = query[:50] + "..." if len(query) > 50 else query
+        print(f"{self.prefix}🔍 #{self.search_count}: \"{query_display}\"")
         sys.stdout.flush()
     
     def on_tool_end(self, output, **kwargs):
-        """Called when a tool finishes."""
-        # Count results in the output
-        output_str = str(output)
-        url_count = output_str.count("http")
-        # print(f"   ✓ Found ~{url_count} results")
         sys.stdout.flush()
 
 
-def create_shopping_agent(callbacks=None):
-    """Create and configure the shopping comparison agent."""
-    
-    # Initialize the LLM with system prompt
-    # Using gpt-4o-mini for better rate limits and cost efficiency
-    llm = ChatOpenAI(
-        model="gpt-4o-mini",
-        temperature=0,
-        callbacks=callbacks,
-    )
-    
-    # Initialize Tavily Search with optimized settings
-    # Note: include_raw_content=False to avoid token limits
+def create_agent_with_search(system_prompt: str, callbacks=None):
+    """Create an agent with Tavily search capability."""
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0, callbacks=callbacks)
     tavily_search = TavilySearch(
         max_results=10,
         search_depth="advanced",
         include_answer=True,
         include_raw_content=False,
     )
+    return create_agent(llm, [tavily_search], system_prompt=system_prompt)
+
+
+def search_products(query: str) -> str:
+    """Search for product prices (without cashback/credit card info)."""
+    print("\n📦 [Product Search] Starting...\n")
+    callback = ProgressCallback(prefix="  ")
+    agent = create_agent_with_search(SEARCH_PROMPT, callbacks=[callback])
     
-    tools = [tavily_search]
+    enhanced_query = f"""
+{query}
+
+Search for prices from at least 15 different retailers.
+Format as numbered list with: Retailer, URL, Price, Tax, Shipping, Total.
+"""
     
-    # Create the agent using LangChain's create_agent
-    agent = create_agent(
-        llm,
-        tools,
-        system_prompt=SYSTEM_PROMPT,
+    result = agent.invoke(
+        {"messages": [("human", enhanced_query)]},
+        config={"callbacks": [callback]}
     )
     
-    return agent
+    messages = result.get("messages", [])
+    for msg in reversed(messages):
+        if hasattr(msg, 'content') and msg.content:
+            if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                continue
+            if msg.content and len(msg.content) > 100:
+                print("  ✅ Product search complete!")
+                return msg.content
+    return ""
+
+
+def lookup_cashback_rates(product_category: str) -> str:
+    """Look up cashback rates from shopping portals (runs in parallel)."""
+    print("\n💰 [Cashback Lookup] Starting...\n")
+    callback = ProgressCallback(prefix="  ")
+    agent = create_agent_with_search(CASHBACK_PROMPT, callbacks=[callback])
+    
+    cashback_query = f"""
+Find current cashback rates for "{product_category}" category.
+
+Search for rates at: Amazon, Best Buy, Walmart, Target, Costco, B&H Photo, Adorama, Newegg, Apple, Samsung
+
+Portals to check: Rakuten, Capital One Shopping, ShopBack
+
+Remember: Costco = No cashback, Apple = Very limited
+"""
+    
+    result = agent.invoke(
+        {"messages": [("human", cashback_query)]},
+        config={"callbacks": [callback]}
+    )
+    
+    messages = result.get("messages", [])
+    for msg in reversed(messages):
+        if hasattr(msg, 'content') and msg.content:
+            if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                continue
+            if msg.content and len(msg.content) > 50:
+                print("  ✅ Cashback lookup complete!")
+                return msg.content
+    return ""
+
+
+def lookup_credit_card_rewards(retailers: list) -> str:
+    """
+    Look up credit card reward rates (runs in parallel).
+    
+    Args:
+        retailers: List of retailer names to get recommendations for
+    
+    Returns:
+        Credit card reward rates and recommendations
+    """
+    print("\n💳 [Credit Card Rewards] Starting...\n")
+    callback = ProgressCallback(prefix="  ")
+    agent = create_agent_with_search(CREDIT_CARD_PROMPT, callbacks=[callback])
+    
+    retailers_str = ", ".join(retailers) if retailers else "Amazon, Best Buy, Walmart, Target, Costco, B&H Photo, Newegg"
+    
+    credit_card_query = f"""
+Find the best credit card reward rates for shopping at these retailers:
+{retailers_str}
+
+Cards to research:
+1. Citi Double Cash
+2. Chase Sapphire Reserve
+3. Capital One Venture X
+4. Bank of America Customized Cash
+5. Amazon Prime Visa (for Amazon)
+6. Costco Anywhere Visa (for Costco - only Visa accepted)
+
+For each retailer, recommend the best card to use and why.
+Note any restrictions (e.g., Costco only accepts Visa).
+"""
+    
+    result = agent.invoke(
+        {"messages": [("human", credit_card_query)]},
+        config={"callbacks": [callback]}
+    )
+    
+    messages = result.get("messages", [])
+    for msg in reversed(messages):
+        if hasattr(msg, 'content') and msg.content:
+            if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                continue
+            if msg.content and len(msg.content) > 50:
+                print("  ✅ Credit card lookup complete!")
+                return msg.content
+    return ""
+
+
+def verify_results(raw_results: str, product_query: str) -> str:
+    """Verify and correct the search results."""
+    print("\n🔎 [Verification] Checking results...")
+    sys.stdout.flush()
+    
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    
+    verification_query = f"""
+Original search: "{product_query}"
+
+Verify these results:
+{raw_results}
+
+Remove duplicates, non-retailers, invalid URLs. Check product matches query.
+"""
+    
+    response = llm.invoke([
+        {"role": "system", "content": VERIFICATION_PROMPT},
+        {"role": "user", "content": verification_query}
+    ])
+    
+    print("  ✅ Verification complete!")
+    return response.content
+
+
+def enrich_with_rewards(verified_results: str, cashback_data: str, credit_card_data: str, product_query: str) -> str:
+    """
+    Enrich verified results with cashback AND credit card recommendations.
+    """
+    print("\n✨ [Enrichment] Combining all data...")
+    sys.stdout.flush()
+    
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    
+    enrich_query = f"""
+Product searched: "{product_query}"
+
+=== PRODUCT SEARCH RESULTS ===
+{verified_results}
+
+=== CASHBACK DATA ===
+{cashback_data}
+
+=== CREDIT CARD REWARDS DATA ===
+{credit_card_data}
+
+Please combine all this data:
+1. For each retailer, add:
+   - Cashback rates from each portal
+   - Best credit card to use and its reward rate
+   - Potential savings (cashback + credit card rewards)
+2. Calculate which combination gives the best total value
+3. End with BEST OVERALL DEAL and Credit Card Strategy
+
+Remember: Costco only accepts Visa (recommend Costco Visa or Citi Double Cash)
+"""
+    
+    response = llm.invoke([
+        {"role": "system", "content": ENRICH_PROMPT},
+        {"role": "user", "content": enrich_query}
+    ])
+    
+    print("  ✅ Enrichment complete!")
+    return response.content
+
+
+def detect_product_category(query: str) -> str:
+    """Detect the product category from the query."""
+    query_lower = query.lower()
+    
+    if any(word in query_lower for word in ['phone', 'laptop', 'computer', 'tv', 'headphone', 'airpod', 'playstation', 'xbox', 'nintendo', 'camera', 'tablet', 'ipad', 'watch', 'speaker', 'monitor']):
+        return "Electronics"
+    elif any(word in query_lower for word in ['shirt', 'pants', 'dress', 'jacket', 'shoes', 'clothing', 'apparel', 'sneaker']):
+        return "Clothing"
+    elif any(word in query_lower for word in ['sofa', 'chair', 'table', 'bed', 'furniture', 'mattress', 'desk']):
+        return "Home/Furniture"
+    elif any(word in query_lower for word in ['makeup', 'skincare', 'beauty', 'cosmetic', 'perfume']):
+        return "Beauty"
+    else:
+        return "General"
 
 
 def search_product_prices(query: str) -> str:
     """
-    Search for product prices across multiple websites.
+    Search for product prices with parallel lookups.
     
-    Args:
-        query: The product search query (e.g., "Find me the best price for PlayStation 5")
-    
-    Returns:
-        A comprehensive price comparison report.
+    Architecture:
+    1. Product Search + Cashback Lookup + Credit Card Lookup (ALL PARALLEL)
+    2. Verification
+    3. Enrichment with cashback + credit card data
     """
-    # Create progress callback
-    progress_callback = ProgressCallback()
+    # Detect product category
+    category = detect_product_category(query)
+    print(f"📂 Detected category: {category}")
     
-    agent = create_shopping_agent(callbacks=[progress_callback])
+    # Common retailers for credit card lookup
+    common_retailers = ["Amazon", "Best Buy", "Walmart", "Target", "Costco", "B&H Photo", "Newegg", "Apple"]
     
-    # Enhance the query with specific instructions
-    enhanced_query = f"""
-{query}
-
-Please search extensively and find prices from at least 15 different websites/retailers.
-
-IMPORTANT - Determine the PRODUCT CATEGORY first (e.g., Electronics, Clothing, Home, Beauty, etc.)
-Then search for CATEGORY-SPECIFIC cashback rates from Rakuten, Capital One Shopping, and ShopBack.
-Example: "Rakuten Best Buy electronics cashback rate 2025"
-
-CRITICAL CASHBACK RULES:
-- Cashback rates VARY BY CATEGORY (e.g., electronics often 1-2%, clothing 3-8%)
-- ONLY report cashback you actually found in search results for THIS CATEGORY
-- Say "No cashback" if no partnership exists (e.g., Costco, T-Mobile)
-- Say "Verify on portal" if uncertain about the category rate
-- DO NOT guess or use general rates when category rates differ
-
-Format your response as a NUMBERED LIST (not a table):
-
-1. **[Retailer Name]**
-   - URL: [DIRECT product page link - NOT homepage]
-     * If not found, write: "Search [product] on [retailer].com"
-   - Base Price: $XX.XX
-   - Tax (9.25%): $XX.XX
-   - Shipping: Free / $XX.XX
-   - 💰 Cashback (for [category]):
-     * Rakuten: X% or "No cashback"
-     * Capital One Shopping: X% or "No cashback"
-     * ShopBack: X% or "No cashback"
-   - 💳 Best Credit Card: [Card Name] - [rate/reason]
-     * For online shopping: BofA Customized Cash (3% if set to Online Shopping)
-     * For general purchases: Citi Double Cash (2%) or Venture X (2x)
-     * For travel/dining retailers: Chase Sapphire Reserve (3x)
-     * For wholesale clubs (Costco): Citi Double Cash (2%) - Costco only takes Visa
-   - **TOTAL: $XX.XX**
-
-2. **[Next Retailer]**
-   ... and so on
-
-⚠️ BEFORE OUTPUTTING - FINAL VERIFICATION:
-1. ONLY ACTUAL RETAILERS - Remove any:
-   - Shopping portals (Rakuten, ShopBack, Honey)
-   - News/review sites (CNET, TechRadar, Engadget, IGN)
-   - Price comparison sites (Google Shopping)
-   - Deal aggregators (Slickdeals)
-2. NO DUPLICATES - Each retailer appears only once
-3. URLs must be PRODUCT PAGES, not search results:
-   - ❌ Remove URLs with "/search", "/s?", "searchpage", "query="
-   - ✅ Keep URLs with product ID like "/dp/", "/ip/", "/product/"
-4. VERIFY CORRECT PRODUCT - URL matches exact product searched
-5. Remove retailers with invalid URLs
-
-After listing all retailers with VERIFIED URLs, provide:
-- 🏆 BEST OVERALL DEAL (considering price + cashback + credit card rewards)
-- Your recommendation for the best place to buy
-- 💳 Credit Card Strategy Summary:
-  * Which card to use for best rewards at each store type
-  * Note any store-specific restrictions (e.g., Costco = Visa only)
-- ⚠️ Note: Rates shown are for [category] - verify current rates before purchase
-- Tips on stacking: Portal cashback + Credit card rewards + Store promotions
-"""
+    # Run ALL THREE lookups in PARALLEL
+    print("\n" + "=" * 55)
+    print("🚀 Running 3 parallel searches...")
+    print("   📦 Products | 💰 Cashback | 💳 Credit Cards")
+    print("=" * 55)
     
-    print("\n📡 Starting search process...\n")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        # Submit all three tasks
+        product_future = executor.submit(search_products, query)
+        cashback_future = executor.submit(lookup_cashback_rates, category)
+        credit_card_future = executor.submit(lookup_credit_card_rewards, common_retailers)
+        
+        # Wait for all to complete
+        product_results = product_future.result()
+        cashback_data = cashback_future.result()
+        credit_card_data = credit_card_future.result()
     
-    # Use invoke (not stream) and pass the callback for progress updates
-    result = agent.invoke(
-        {"messages": [("human", enhanced_query)]},
-        config={"callbacks": [progress_callback]}
-    )
+    if not product_results:
+        return "No results found. Please try again."
     
-    print("\n✅ Analysis complete!\n")
+    # Step 2: Verify results
+    print("\n" + "-" * 55)
+    verified_results = verify_results(product_results, query)
     
-    # Extract the final response from the messages
-    messages = result.get("messages", [])
-    if messages:
-        # Get the last message with content
-        for msg in reversed(messages):
-            if hasattr(msg, 'content') and msg.content:
-                # Skip tool messages
-                if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                    continue
-                # Return the content if it looks like a final response
-                content = msg.content
-                if content and len(content) > 100:  # Final response should be substantial
-                    return content
+    # Step 3: Enrich with cashback AND credit card data
+    print("\n" + "-" * 55)
+    final_results = enrich_with_rewards(verified_results, cashback_data, credit_card_data, query)
     
-    return "No results found. Please try again."
+    return final_results
 
 
 def main():
@@ -327,10 +439,11 @@ def main():
     print("=" * 60)
     print("🛒 Shopping Price Comparison Agent")
     print("=" * 60)
-    print("\nThis agent will search the web and compare prices from")
-    print("at least 15 different websites for your product.\n")
+    print("\nThis agent runs 3 parallel searches:")
+    print("  📦 Product prices from 15+ retailers")
+    print("  💰 Cashback rates (Rakuten, Capital One, ShopBack)")
+    print("  💳 Credit card rewards (best card for each store)\n")
     
-    # Get user input
     default_query = "Find me the best price for PlayStation 5"
     user_input = input(f"Enter your search query (or press Enter for default: '{default_query}'): ").strip()
     
@@ -338,13 +451,12 @@ def main():
         user_input = default_query
     
     print(f"\n🔍 Searching for: {user_input}")
-    print("⏳ This may take a minute as we search multiple websites...\n")
-    print("-" * 60)
+    print("⏳ Running parallel searches...\n")
     
     try:
         result = search_product_prices(user_input)
         print("\n" + "=" * 60)
-        print("📊 PRICE COMPARISON RESULTS")
+        print("📊 FINAL PRICE COMPARISON RESULTS")
         print("=" * 60)
         print(result)
     except Exception as e:
