@@ -2,17 +2,18 @@
 
 An AI-powered shopping agent that searches the web for product prices across multiple websites and provides comprehensive price comparisons with cashback rates and credit card recommendations.
 
-Built with **LangChain**, **Tavily Search API**, and **MCP (Model Context Protocol)**.
+Built with **LangChain**, **Tavily Search API**, **RAG (Retrieval-Augmented Generation)**, and **MCP (Model Context Protocol)**.
 
 ## Features
 
 - 🔍 Searches across 15+ distinct retailers (Amazon, Best Buy, Walmart, Target, Costco, etc.)
 - 💰 Compares prices including tax and shipping costs
-- 💵 Finds cashback rates from Rakuten, Capital One Shopping, ShopBack
+- 💵 **RAG-powered** cashback rates from Rakuten, Capital One Shopping, ShopBack
 - 💳 Recommends best credit card for each retailer
 - 📍 Calculates estimates for ZIP code 94022 (Los Altos, CA)
 - 🤖 **MCP Support** - Connect to Claude Desktop or other MCP clients
 - 📈 **Price Tracking** - Monitor prices over time
+- 🧠 **Local Knowledge Base** - Fast cashback lookups without web searches
 
 ---
 
@@ -225,6 +226,7 @@ python price_tracker.py
 │         (Parallel execution of search agents)                │
 ├──────────────────┬──────────────────┬───────────────────────┤
 │ Product Search   │  Cashback Lookup │  Credit Card Lookup   │
+│ (Tavily Search)  │  (RAG + ChromaDB)│  (Tavily Search)      │
 └──────────────────┴──────────────────┴───────────────────────┘
                               │
                               ▼
@@ -235,16 +237,87 @@ python price_tracker.py
 
 ---
 
+## 🧠 RAG-Based Cashback Lookup
+
+The cashback lookup uses **Retrieval-Augmented Generation (RAG)** instead of web searches for faster, more accurate results.
+
+### How It Works
+
+| Component | Method | Data Source |
+|-----------|--------|-------------|
+| **Product Search** | Web Search (Tavily) | Live web data |
+| **Cashback Rates** | RAG (Local) | `cashback_data/knowledge_base.json` |
+| **Credit Cards** | Web Search (Tavily) | Live web data |
+
+### First Run Behavior
+
+On the first run, the RAG system will:
+1. Load `cashback_data/knowledge_base.json`
+2. Create vector embeddings using OpenAI
+3. Store them in `cashback_data/chroma_db/`
+
+You'll see:
+```
+🔨 Building new vector store...
+📝 Indexing 49 documents...
+✅ Vector store built and persisted
+```
+
+### Subsequent Runs
+
+The vector store is cached locally:
+```
+📂 Loading existing vector store from cashback_data/chroma_db
+```
+
+### Updating Cashback Data
+
+To update cashback rates:
+
+**Step 1:** Edit the knowledge base
+```bash
+nano cashback_data/knowledge_base.json
+```
+
+**Step 2:** Rebuild the vector index
+```bash
+source venv/bin/activate
+python -c "from cashback_rag import CashbackRAG; CashbackRAG().rebuild_index()"
+```
+
+### Knowledge Base Structure
+
+The `knowledge_base.json` contains:
+- **Portal rates**: Rakuten, Capital One Shopping, ShopBack
+- **Retailer-specific rates**: Per-retailer cashback percentages
+- **Category rates**: Electronics (1-2%), Clothing (3-8%), Home (2-5%)
+- **Exclusions**: Costco (no cashback), Apple (limited), T-Mobile (excluded)
+
+### Testing RAG Standalone
+
+```bash
+source venv/bin/activate
+python cashback_rag.py
+```
+
+This runs a test lookup for Amazon, Best Buy, Costco, Target, Walmart in the electronics category.
+
+---
+
 ## File Structure
 
 ```
 shopping-agent/
 ├── main.py                 # Standalone shopping agent
+├── cashback_rag.py         # RAG module for cashback lookup
 ├── price_tracker.py        # Price monitoring agent
 ├── requirements.txt        # Python dependencies
 ├── .env                    # API keys (not in git)
 ├── env.example             # API keys template
 ├── mcp_config.json         # MCP configuration
+├── cashback_data/
+│   ├── knowledge_base.json # Cashback rates data
+│   └── chroma_db/          # Vector store (auto-generated)
 └── mcp_agents/
     ├── __init__.py
     ├── mcp_server.py       # MCP server (stdio transport)
@@ -279,9 +352,10 @@ DANGEROUSLY_OMIT_AUTH=true npx @modelcontextprotocol/inspector ...
 ## Notes
 
 - Tax estimates are based on California's sales tax rate (9.25%) for ZIP 94022
-- Cashback rates are looked up in real-time and may vary
-- Costco only accepts Visa credit cards
+- Cashback rates use RAG from local knowledge base (update `cashback_data/knowledge_base.json` for latest rates)
+- Costco only accepts Visa credit cards and has no cashback on any portal
 - URLs marked with ⚠️ should be verified before purchase
+- Vector store is cached in `cashback_data/chroma_db/` - delete to force rebuild
 
 ---
 

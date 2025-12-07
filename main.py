@@ -58,36 +58,7 @@ Destination: ZIP 94022 (Los Altos, California).
 """
 
 
-# Cashback lookup prompt
-CASHBACK_PROMPT = """You are a cashback research specialist. Find current cashback rates from shopping portals.
-
-SEARCH INSTRUCTIONS:
-1. ONLY search for cashback rates for the specific retailers provided in the query.
-   Do NOT search for retailers not in the list.
-
-2. Search portals:
-   - Rakuten: "Rakuten [retailer] cashback"
-   - Capital One Shopping: "Capital One Shopping [retailer]"
-   - ShopBack: "ShopBack [retailer] cashback"
-
-3. CATEGORY-SPECIFIC rates:
-   - Electronics: usually 1-2%
-   - Clothing: usually 3-8%
-   - Home/Furniture: usually 2-5%
-
-4. KNOWN EXCLUSIONS:
-   - Costco: No cashback on any portal
-   - Apple Store: Very limited/no cashback
-
-5. Output format:
-   [Retailer]: Rakuten X%, Capital One Shopping X%, ShopBack X%
-   If no cashback: "[Retailer]: No cashback"
-
-Only report rates ACTUALLY FOUND. Do NOT guess.
-"""
-
-
-# Credit card rewards lookup prompt
+# Credit card rewards lookup prompt (Cashback now uses RAG - see cashback_rag.py)
 CREDIT_CARD_PROMPT = """You are a credit card rewards specialist. Find the best credit card reward rates for shopping.
 
 SEARCH INSTRUCTIONS:
@@ -268,7 +239,10 @@ Include the URL exactly as it appears in the search results.
 
 def lookup_cashback_rates(retailers: list, product_category: str) -> str:
     """
-    Look up cashback rates from shopping portals for specific retailers only.
+    Look up cashback rates using RAG (Retrieval-Augmented Generation).
+    
+    Uses a local knowledge base with vector embeddings for fast, accurate
+    cashback information without web searches.
     
     Args:
         retailers: List of retailer names found in product search
@@ -277,44 +251,17 @@ def lookup_cashback_rates(retailers: list, product_category: str) -> str:
     Returns:
         Cashback rates for each retailer
     """
-    print("\n💰 [Cashback Lookup] Starting...\n")
+    print("\n💰 [Cashback RAG Lookup] Starting...")
     
     if not retailers:
         print("  ⚠️ No retailers provided, skipping cashback lookup")
         return "No retailers to look up cashback for."
     
-    callback = ProgressCallback(prefix="  ")
-    agent = create_agent_with_search(CASHBACK_PROMPT, callbacks=[callback])
+    # Use RAG-based lookup
+    from cashback_rag import lookup_cashback_rates_rag
     
-    retailers_str = ", ".join(retailers)
-    
-    cashback_query = f"""
-Find current cashback rates for "{product_category}" category.
-
-ONLY search for these specific retailers (from product search results):
-{retailers_str}
-
-Portals to check: Rakuten, Capital One Shopping, ShopBack
-
-Remember: Costco = No cashback, Apple = Very limited
-
-Do NOT search for any other retailers not in the list above.
-"""
-    
-    result = agent.invoke(
-        {"messages": [("human", cashback_query)]},
-        config={"callbacks": [callback]}
-    )
-    
-    messages = result.get("messages", [])
-    for msg in reversed(messages):
-        if hasattr(msg, 'content') and msg.content:
-            if hasattr(msg, 'tool_calls') and msg.tool_calls:
-                continue
-            if msg.content and len(msg.content) > 50:
-                print("  ✅ Cashback lookup complete!")
-                return msg.content
-    return ""
+    result = lookup_cashback_rates_rag(retailers, product_category)
+    return result
 
 
 def lookup_credit_card_rewards(retailers: list) -> str:

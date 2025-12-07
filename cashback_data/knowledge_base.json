@@ -1,0 +1,289 @@
+{
+  "last_updated": "2024-12-07",
+  "portals": {
+    "rakuten": {
+      "name": "Rakuten",
+      "retailers": {
+        "amazon": {
+          "base_rate": "1%",
+          "categories": {
+            "electronics": "1%",
+            "clothing": "1%",
+            "home": "1%",
+            "books": "1%"
+          },
+          "notes": "Limited categories eligible"
+        },
+        "best_buy": {
+          "base_rate": "1%",
+          "categories": {
+            "electronics": "1%",
+            "appliances": "2%"
+          },
+          "notes": "Rate varies by promotion"
+        },
+        "walmart": {
+          "base_rate": "1%",
+          "categories": {
+            "electronics": "1%",
+            "clothing": "3%",
+            "home": "2%",
+            "grocery": "0%"
+          },
+          "notes": "Grocery excluded from cashback"
+        },
+        "target": {
+          "base_rate": "1%",
+          "categories": {
+            "electronics": "1%",
+            "clothing": "2%",
+            "home": "1%"
+          },
+          "notes": "RedCard purchases may not be eligible"
+        },
+        "macys": {
+          "base_rate": "3%",
+          "categories": {
+            "clothing": "6%",
+            "home": "3%",
+            "beauty": "4%"
+          },
+          "notes": "Higher rates during promotions"
+        },
+        "nordstrom": {
+          "base_rate": "2%",
+          "categories": {
+            "clothing": "3%",
+            "shoes": "3%",
+            "beauty": "2%"
+          },
+          "notes": "Rack purchases may have different rates"
+        },
+        "sephora": {
+          "base_rate": "4%",
+          "categories": {
+            "beauty": "4%",
+            "skincare": "4%"
+          },
+          "notes": "Excludes gift cards"
+        },
+        "hp": {
+          "base_rate": "4%",
+          "categories": {
+            "electronics": "4%",
+            "computers": "4%"
+          },
+          "notes": "Direct HP store purchases"
+        },
+        "dell": {
+          "base_rate": "2%",
+          "categories": {
+            "electronics": "2%",
+            "computers": "2%"
+          },
+          "notes": "Consumer purchases only"
+        },
+        "lenovo": {
+          "base_rate": "5%",
+          "categories": {
+            "electronics": "5%",
+            "computers": "5%"
+          },
+          "notes": "Higher rates during sales events"
+        },
+        "samsung": {
+          "base_rate": "2%",
+          "categories": {
+            "electronics": "2%",
+            "phones": "1%",
+            "tvs": "2%"
+          },
+          "notes": "Phone cashback often lower"
+        },
+        "newegg": {
+          "base_rate": "1%",
+          "categories": {
+            "electronics": "1%",
+            "computers": "1%"
+          },
+          "notes": "Limited to select items"
+        },
+        "adorama": {
+          "base_rate": "2%",
+          "categories": {
+            "electronics": "2%",
+            "cameras": "2%"
+          },
+          "notes": "Photography equipment included"
+        },
+        "bh_photo": {
+          "base_rate": "2%",
+          "categories": {
+            "electronics": "2%",
+            "cameras": "2%",
+            "audio": "2%"
+          },
+          "notes": "Also known as B&H Photo Video"
+        }
+      },
+      "exclusions": ["costco", "apple", "t-mobile", "verizon", "att"]
+    },
+    "capital_one_shopping": {
+      "name": "Capital One Shopping",
+      "retailers": {
+        "amazon": {
+          "base_rate": "varies",
+          "categories": {
+            "electronics": "1-5%",
+            "clothing": "2-8%",
+            "home": "2-6%"
+          },
+          "notes": "Rates vary by product, uses browser extension rewards"
+        },
+        "best_buy": {
+          "base_rate": "1-2%",
+          "categories": {
+            "electronics": "1%",
+            "appliances": "2%"
+          },
+          "notes": "Automatic coupon application"
+        },
+        "walmart": {
+          "base_rate": "1-3%",
+          "categories": {
+            "electronics": "1%",
+            "clothing": "3%",
+            "home": "2%"
+          },
+          "notes": "Works with Walmart.com online orders"
+        },
+        "target": {
+          "base_rate": "1-2%",
+          "categories": {
+            "electronics": "1%",
+            "clothing": "2%",
+            "home": "1%"
+          },
+          "notes": "Target Circle may stack"
+        },
+        "macys": {
+          "base_rate": "2-6%",
+          "categories": {
+            "clothing": "4-6%",
+            "home": "2-4%"
+          },
+          "notes": "Higher during sales events"
+        },
+        "ebay": {
+          "base_rate": "1%",
+          "categories": {
+            "electronics": "1%",
+            "clothing": "1%"
+          },
+          "notes": "Select sellers only"
+        },
+        "hp": {
+          "base_rate": "3%",
+          "categories": {
+            "electronics": "3%",
+            "computers": "3%"
+          },
+          "notes": "HP.com direct purchases"
+        },
+        "dell": {
+          "base_rate": "2%",
+          "categories": {
+            "electronics": "2%",
+            "computers": "2%"
+          },
+          "notes": "Dell.com consumer store"
+        },
+        "samsung": {
+          "base_rate": "1-2%",
+          "categories": {
+            "electronics": "1%",
+            "phones": "1%",
+            "tvs": "2%"
+          },
+          "notes": "Samsung.com direct"
+        }
+      },
+      "exclusions": ["costco", "apple"]
+    },
+    "shopback": {
+      "name": "ShopBack",
+      "retailers": {
+        "amazon": {
+          "base_rate": "up to 4%",
+          "categories": {
+            "electronics": "1-2%",
+            "clothing": "2-4%",
+            "home": "2-3%"
+          },
+          "notes": "US availability limited, mainly Asia markets"
+        },
+        "ebay": {
+          "base_rate": "1-2%",
+          "categories": {
+            "electronics": "1%",
+            "clothing": "2%"
+          },
+          "notes": "Available in select regions"
+        },
+        "aliexpress": {
+          "base_rate": "4-6%",
+          "categories": {
+            "electronics": "4%",
+            "clothing": "6%",
+            "home": "5%"
+          },
+          "notes": "Higher rates for AliExpress"
+        },
+        "shein": {
+          "base_rate": "6%",
+          "categories": {
+            "clothing": "6%"
+          },
+          "notes": "Fashion focused"
+        }
+      },
+      "exclusions": ["costco", "apple", "best_buy", "walmart", "target"],
+      "notes": "ShopBack has limited US retailer coverage, primarily serves Asia-Pacific"
+    }
+  },
+  "category_guidance": {
+    "electronics": {
+      "typical_range": "1-2%",
+      "best_portal": "Rakuten",
+      "notes": "Electronics typically have lowest cashback rates due to thin margins"
+    },
+    "clothing": {
+      "typical_range": "3-8%",
+      "best_portal": "Rakuten or Capital One Shopping",
+      "notes": "Clothing and apparel have highest cashback rates"
+    },
+    "home": {
+      "typical_range": "2-5%",
+      "best_portal": "Rakuten",
+      "notes": "Home goods and furniture have moderate rates"
+    },
+    "beauty": {
+      "typical_range": "4-8%",
+      "best_portal": "Rakuten",
+      "notes": "Beauty and skincare often have good cashback"
+    },
+    "computers": {
+      "typical_range": "1-5%",
+      "best_portal": "Rakuten",
+      "notes": "Direct manufacturer stores (HP, Lenovo) often have better rates than third-party retailers"
+    }
+  },
+  "universal_exclusions": {
+    "costco": "Costco does not participate in any cashback portal programs",
+    "apple": "Apple Store has very limited or no cashback on most portals",
+    "t-mobile": "T-Mobile/wireless carriers generally excluded from cashback",
+    "verizon": "Verizon/wireless carriers generally excluded from cashback",
+    "att": "AT&T/wireless carriers generally excluded from cashback"
+  }
+}
+
