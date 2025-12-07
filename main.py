@@ -37,20 +37,30 @@ SEARCH INSTRUCTIONS:
    - "[product] site:bhphotovideo.com"
    - "[product] site:newegg.com"
 
-2. For each result found, report:
+2. CRITICAL - USE EXACT URLs FROM SEARCH RESULTS:
+   When Tavily returns search results, each result has a "url" field.
+   YOU MUST USE THAT EXACT URL - do not modify or construct URLs yourself.
+   
+   Example Tavily result:
+   {"title": "Apple AirPods Pro...", "url": "https://www.amazon.com/dp/B0D1XD1ZV3", "content": "..."}
+   
+   Use: https://www.amazon.com/dp/B0D1XD1ZV3 (the exact URL from results)
+   
+3. For each result found, report:
    - Retailer Name
-   - Product URL: Use the URL from search results. Prefer URLs with product IDs.
-   - Base Price
+   - Product URL: THE EXACT URL FROM TAVILY SEARCH RESULTS
+   - Base Price (from search result content)
    - Tax (9.25% for ZIP 94022)
    - Shipping cost (Free if not specified)
    - Total Price
 
-3. URL PREFERENCES (in order):
-   - Best: Direct product page URL from search results
-   - OK: Product search URL if direct page not available
-   - Include whatever URL the search returns - we'll verify later
+4. URL QUALITY:
+   ✅ BEST: URLs with product IDs like /dp/B0D1XD1ZV3, /ip/12345, /p/A-12345
+   ✅ OK: Any URL returned by Tavily from the retailer's site
+   ❌ NEVER: Make up URLs or construct URLs yourself
+   ❌ NEVER: Use just the homepage URL
 
-4. ONLY include actual retailers:
+5. ONLY include actual retailers:
    ✅ Amazon, Best Buy, Walmart, Target, Costco, B&H, Adorama, Newegg, Apple, Samsung
    ❌ EXCLUDE: news sites, reviews, deal aggregators, shopping portals
 
@@ -102,27 +112,40 @@ VERIFICATION_PROMPT = """You are a data verification assistant. Review and clean
 
 VERIFICATION TASKS:
 
-1. REMOVE DUPLICATES: Keep only one entry per retailer
+1. REMOVE DUPLICATES: Keep only one entry per retailer (keep the one with best URL)
 
 2. REMOVE NON-RETAILERS: 
    - News sites, review sites, deal aggregators
    - Shopping portals (Rakuten, Honey, etc.)
    - Price comparison sites
 
-3. URL QUALITY CHECK:
-   - ✅ Direct product URLs: Keep as-is
-   - ⚠️ Search result URLs: Keep but add note "verify URL"
-   - ❌ Homepage only URLs: Remove entry
+3. URL QUALITY - PRESERVE ORIGINAL URLs:
+   DO NOT modify URLs that came from search results.
+   
+   ✅ KEEP AS-IS: URLs with product identifiers
+      - /dp/B0D1XD1ZV3 (Amazon)
+      - /ip/12345678 (Walmart)
+      - /site/product/12345.p (Best Buy)
+      - /p/product/-/A-12345 (Target)
+      - .product.12345.html (Costco)
+   
+   ⚠️ FLAG but keep: URLs that look like search results
+      - /s?k= (Amazon search)
+      - /search?q= (Walmart search)
+   
+   ❌ REMOVE entry if URL is ONLY homepage with no path:
+      - https://www.amazon.com (no path)
+      - https://www.bestbuy.com/ (no path)
 
 4. KEEP entries that have:
    - A retailer name
    - A price
-   - Some form of URL (even if search URL)
+   - A URL with some path (not just homepage)
 
 OUTPUT:
-- Return cleaned list with all valid retailer entries
-- For URLs that need verification, add: ⚠️ (verify link)
-- Keep results useful - don't over-filter
+- Return cleaned list preserving original URLs from search results
+- Mark with ⚠️ if URL appears to be a search page rather than product page
+- Do NOT construct or modify URLs
 """
 
 
@@ -193,32 +216,42 @@ def create_agent_with_search(system_prompt: str, callbacks=None, include_urls=Fa
 
 
 def search_products(query: str) -> str:
-    """Search for product prices (without cashback/credit card info)."""
+    """Search for product prices."""
     print("\n📦 [Product Search] Starting...\n")
+    
+    # Generate search URLs for each retailer (guaranteed to work)
+    encoded_query = query.replace(" ", "+")
+    retailer_urls = {
+        "Amazon": f"https://www.amazon.com/s?k={encoded_query}",
+        "Best Buy": f"https://www.bestbuy.com/site/searchpage.jsp?st={encoded_query}",
+        "Walmart": f"https://www.walmart.com/search?q={encoded_query}",
+        "Target": f"https://www.target.com/s?searchTerm={encoded_query}",
+        "Costco": f"https://www.costco.com/CatalogSearch?keyword={encoded_query}",
+        "B&H Photo": f"https://www.bhphotovideo.com/c/search?q={encoded_query}",
+        "Newegg": f"https://www.newegg.com/p/pl?d={encoded_query}",
+        "Adorama": f"https://www.adorama.com/l/?searchinfo={encoded_query}",
+    }
+    
+    url_info = "\n".join([f"- {retailer}: {url}" for retailer, url in retailer_urls.items()])
+    
     callback = ProgressCallback(prefix="  ")
     agent = create_agent_with_search(SEARCH_PROMPT, callbacks=[callback], include_urls=True)
     
     enhanced_query = f"""
 Find prices for: {query}
 
-Search at these retailers (use site: searches):
-1. Amazon (site:amazon.com)
-2. Best Buy (site:bestbuy.com)
-3. Walmart (site:walmart.com)
-4. Target (site:target.com)
-5. Costco (site:costco.com)
-6. B&H Photo (site:bhphotovideo.com)
-7. Newegg (site:newegg.com)
+USE THESE EXACT URLs in your output (these are working search links):
+{url_info}
 
-For each retailer found, report:
-- Retailer name
-- URL from search results
-- Price
-- Tax (9.25%)
-- Shipping
+Search for the current price at each retailer. For each one, report:
+- Retailer name  
+- URL: COPY THE EXACT URL FROM ABOVE - do not modify it
+- Price found
+- Tax (9.25% for ZIP 94022)
+- Shipping (Free if not specified)
 - Total
 
-Include the URL exactly as it appears in the search results.
+Format each URL as a markdown link: [Retailer](URL)
 """
     
     result = agent.invoke(
