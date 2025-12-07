@@ -24,46 +24,22 @@ if not os.getenv("TAVILY_API_KEY"):
     raise ValueError("TAVILY_API_KEY not found. Please set it in your .env file.")
 
 
-# Simplified search prompt (cashback and credit cards handled separately)
+# Base search prompt - retailer URLs provided dynamically via RAG
 SEARCH_PROMPT = """You are an expert shopping assistant. Search for product prices.
 
-SEARCH INSTRUCTIONS:
-1. Search multiple retailers using site-specific searches:
-   - "[product] site:amazon.com"
-   - "[product] site:bestbuy.com"
-   - "[product] site:walmart.com"
-   - "[product] site:target.com"
-   - "[product] site:costco.com"
-   - "[product] site:bhphotovideo.com"
-   - "[product] site:newegg.com"
+IMPORTANT: Use the exact retailer URLs provided in the query. Do NOT modify them.
 
-2. CRITICAL - USE EXACT URLs FROM SEARCH RESULTS:
-   When Tavily returns search results, each result has a "url" field.
-   YOU MUST USE THAT EXACT URL - do not modify or construct URLs yourself.
-   
-   Example Tavily result:
-   {"title": "Apple AirPods Pro...", "url": "https://www.amazon.com/dp/B0D1XD1ZV3", "content": "..."}
-   
-   Use: https://www.amazon.com/dp/B0D1XD1ZV3 (the exact URL from results)
-   
-3. For each result found, report:
-   - Retailer Name
-   - Product URL: THE EXACT URL FROM TAVILY SEARCH RESULTS
-   - Base Price (from search result content)
-   - Tax (9.25% for ZIP 94022)
-   - Shipping cost (Free if not specified)
-   - Total Price
+For each retailer, report:
+- Retailer Name
+- URL: Use the EXACT URL provided (as markdown link)
+- Base Price
+- Tax (9.25% for ZIP 94022)
+- Shipping (Free unless specified)
+- Total Price
 
-4. URL QUALITY:
-   ✅ BEST: URLs with product IDs like /dp/B0D1XD1ZV3, /ip/12345, /p/A-12345
-   ✅ OK: Any URL returned by Tavily from the retailer's site
-   ❌ NEVER: Make up URLs or construct URLs yourself
-   ❌ NEVER: Use just the homepage URL
+Format each as: [Retailer Name](URL)
 
-5. ONLY include actual retailers:
-   ✅ Amazon, Best Buy, Walmart, Target, Costco, B&H, Adorama, Newegg, Apple, Samsung
-   ❌ EXCLUDE: news sites, reviews, deal aggregators, shopping portals
-
+ONLY include actual retailers. EXCLUDE news sites, reviews, and deal aggregators.
 Destination: ZIP 94022 (Los Altos, California).
 """
 
@@ -215,32 +191,36 @@ def create_agent_with_search(system_prompt: str, callbacks=None, include_urls=Fa
     return create_agent(llm, [tavily_search], system_prompt=system_prompt)
 
 
-def search_products(query: str) -> str:
-    """Search for product prices."""
+def search_products(query: str, category: str = "electronics") -> str:
+    """
+    Search for product prices using RAG-powered retailer configuration.
+    
+    Args:
+        query: Product to search for
+        category: Product category for retailer selection
+    
+    Returns:
+        Formatted search results
+    """
     print("\n📦 [Product Search] Starting...\n")
     
-    # Generate search URLs for each retailer (guaranteed to work)
-    encoded_query = query.replace(" ", "+")
-    retailer_urls = {
-        "Amazon": f"https://www.amazon.com/s?k={encoded_query}",
-        "Best Buy": f"https://www.bestbuy.com/site/searchpage.jsp?st={encoded_query}",
-        "Walmart": f"https://www.walmart.com/search?q={encoded_query}",
-        "Target": f"https://www.target.com/s?searchTerm={encoded_query}",
-        "Costco": f"https://www.costco.com/CatalogSearch?keyword={encoded_query}",
-        "B&H Photo": f"https://www.bhphotovideo.com/c/search?q={encoded_query}",
-        "Newegg": f"https://www.newegg.com/p/pl?d={encoded_query}",
-        "Adorama": f"https://www.adorama.com/l/?searchinfo={encoded_query}",
-    }
+    # Use RAG to get retailer URLs based on category
+    from search_rag import get_search_urls_rag, generate_search_prompt_rag
+    
+    print(f"  🔗 Loading retailer URLs from RAG (category: {category})...")
+    retailer_urls = get_search_urls_rag(query, category)
+    print(f"  ✅ Found {len(retailer_urls)} retailers for {category}\n")
     
     url_info = "\n".join([f"- {retailer}: {url}" for retailer, url in retailer_urls.items()])
     
     callback = ProgressCallback(prefix="  ")
     agent = create_agent_with_search(SEARCH_PROMPT, callbacks=[callback], include_urls=True)
     
+    # Generate RAG-powered search prompt
     enhanced_query = f"""
 Find prices for: {query}
 
-USE THESE EXACT URLs in your output (these are working search links):
+USE THESE EXACT URLs in your output (from RAG knowledge base):
 {url_info}
 
 Search for the current price at each retailer. For each one, report:
@@ -477,12 +457,12 @@ def search_product_prices(query: str) -> str:
     category = detect_product_category(query)
     print(f"📂 Detected category: {category}")
     
-    # Step 1: Run product search first
+    # Step 1: Run product search first (with RAG-powered retailer selection)
     print("\n" + "=" * 55)
-    print("🚀 Step 1: Searching for products...")
+    print("🚀 Step 1: Searching for products (RAG-powered)...")
     print("=" * 55)
     
-    product_results = search_products(query)
+    product_results = search_products(query, category)
     
     if not product_results:
         return "No results found. Please try again."

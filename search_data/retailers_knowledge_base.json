@@ -1,0 +1,198 @@
+{
+  "last_updated": "2024-12-07",
+  "retailers": {
+    "amazon": {
+      "name": "Amazon",
+      "domain": "amazon.com",
+      "search_url_pattern": "https://www.amazon.com/s?k={query}",
+      "product_url_patterns": ["/dp/", "/gp/product/"],
+      "categories": ["electronics", "clothing", "home", "books", "toys", "beauty", "grocery"],
+      "shipping": {
+        "free_threshold": 35,
+        "prime_free": true,
+        "standard_cost": 5.99
+      },
+      "tax": {
+        "collects_tax": true,
+        "rate_94022": 9.25
+      },
+      "notes": "Largest online retailer, Prime members get free shipping",
+      "best_for": ["wide selection", "fast shipping", "competitive prices"]
+    },
+    "best_buy": {
+      "name": "Best Buy",
+      "domain": "bestbuy.com",
+      "search_url_pattern": "https://www.bestbuy.com/site/searchpage.jsp?st={query}",
+      "product_url_patterns": ["/site/", ".p?skuId="],
+      "categories": ["electronics", "computers", "appliances", "gaming"],
+      "shipping": {
+        "free_threshold": 35,
+        "standard_cost": 5.99
+      },
+      "tax": {
+        "collects_tax": true,
+        "rate_94022": 9.25
+      },
+      "notes": "Electronics specialist, price matching available",
+      "best_for": ["electronics", "same-day pickup", "expert advice"]
+    },
+    "walmart": {
+      "name": "Walmart",
+      "domain": "walmart.com",
+      "search_url_pattern": "https://www.walmart.com/search?q={query}",
+      "product_url_patterns": ["/ip/"],
+      "categories": ["electronics", "clothing", "home", "grocery", "toys"],
+      "shipping": {
+        "free_threshold": 35,
+        "walmart_plus_free": true,
+        "standard_cost": 5.99
+      },
+      "tax": {
+        "collects_tax": true,
+        "rate_94022": 9.25
+      },
+      "notes": "Large retailer with competitive prices",
+      "best_for": ["everyday low prices", "grocery", "store pickup"]
+    },
+    "target": {
+      "name": "Target",
+      "domain": "target.com",
+      "search_url_pattern": "https://www.target.com/s?searchTerm={query}",
+      "product_url_patterns": ["/p/", "/-/A-"],
+      "categories": ["electronics", "clothing", "home", "beauty", "toys"],
+      "shipping": {
+        "free_threshold": 35,
+        "redcard_free": true,
+        "standard_cost": 5.99
+      },
+      "tax": {
+        "collects_tax": true,
+        "rate_94022": 9.25
+      },
+      "notes": "Target Circle rewards available, RedCard saves 5%",
+      "best_for": ["home goods", "clothing", "store pickup"]
+    },
+    "costco": {
+      "name": "Costco",
+      "domain": "costco.com",
+      "search_url_pattern": "https://www.costco.com/CatalogSearch?keyword={query}",
+      "product_url_patterns": [".product.", ".html"],
+      "categories": ["electronics", "appliances", "grocery", "home"],
+      "shipping": {
+        "free_threshold": 0,
+        "notes": "Most items include shipping"
+      },
+      "tax": {
+        "collects_tax": true,
+        "rate_94022": 9.25
+      },
+      "membership_required": true,
+      "membership_cost": 65,
+      "notes": "Membership required, bulk items, excellent return policy",
+      "best_for": ["bulk buying", "electronics deals", "appliances"],
+      "payment_restriction": "Visa only for credit cards"
+    },
+    "bhphotovideo": {
+      "name": "B&H Photo",
+      "domain": "bhphotovideo.com",
+      "search_url_pattern": "https://www.bhphotovideo.com/c/search?q={query}",
+      "product_url_patterns": ["/c/product/", "-REG/"],
+      "categories": ["electronics", "cameras", "audio", "computers"],
+      "shipping": {
+        "free_threshold": 0,
+        "notes": "Free shipping on most items"
+      },
+      "tax": {
+        "collects_tax": true,
+        "rate_94022": 9.25
+      },
+      "notes": "Photography and electronics specialist, no sales on Saturday (Shabbat)",
+      "best_for": ["cameras", "professional audio", "video equipment"]
+    },
+    "newegg": {
+      "name": "Newegg",
+      "domain": "newegg.com",
+      "search_url_pattern": "https://www.newegg.com/p/pl?d={query}",
+      "product_url_patterns": ["/p/", "/Product/"],
+      "categories": ["electronics", "computers", "gaming", "components"],
+      "shipping": {
+        "free_threshold": 50,
+        "standard_cost": 5.99
+      },
+      "tax": {
+        "collects_tax": true,
+        "rate_94022": 9.25
+      },
+      "notes": "Computer hardware specialist, deals on PC components",
+      "best_for": ["PC components", "gaming hardware", "computer accessories"]
+    },
+    "adorama": {
+      "name": "Adorama",
+      "domain": "adorama.com",
+      "search_url_pattern": "https://www.adorama.com/l/?searchinfo={query}",
+      "product_url_patterns": ["/l/", ".html"],
+      "categories": ["electronics", "cameras", "audio", "lighting"],
+      "shipping": {
+        "free_threshold": 49,
+        "standard_cost": 4.99
+      },
+      "tax": {
+        "collects_tax": true,
+        "rate_94022": 9.25
+      },
+      "notes": "Photography equipment specialist",
+      "best_for": ["cameras", "photography equipment", "studio lighting"]
+    },
+    "apple": {
+      "name": "Apple Store",
+      "domain": "apple.com",
+      "search_url_pattern": "https://www.apple.com/us/search/{query}",
+      "product_url_patterns": ["/shop/buy-", "/shop/product/"],
+      "categories": ["electronics", "computers", "phones", "tablets", "accessories"],
+      "shipping": {
+        "free_threshold": 0,
+        "notes": "Free shipping on all orders"
+      },
+      "tax": {
+        "collects_tax": true,
+        "rate_94022": 9.25
+      },
+      "notes": "Official Apple products, AppleCare available",
+      "best_for": ["Apple products", "AppleCare", "trade-in deals"]
+    },
+    "samsung": {
+      "name": "Samsung",
+      "domain": "samsung.com",
+      "search_url_pattern": "https://www.samsung.com/us/search/searchMain?searchTerm={query}",
+      "product_url_patterns": ["/us/", "/buy/"],
+      "categories": ["electronics", "phones", "tvs", "appliances"],
+      "shipping": {
+        "free_threshold": 0,
+        "notes": "Free shipping on most items"
+      },
+      "tax": {
+        "collects_tax": true,
+        "rate_94022": 9.25
+      },
+      "notes": "Official Samsung products, trade-in offers",
+      "best_for": ["Samsung phones", "TVs", "Galaxy devices"]
+    }
+  },
+  "category_retailers": {
+    "electronics": ["amazon", "best_buy", "walmart", "target", "costco", "bhphotovideo", "newegg", "adorama"],
+    "computers": ["amazon", "best_buy", "newegg", "costco", "bhphotovideo"],
+    "cameras": ["bhphotovideo", "adorama", "amazon", "best_buy"],
+    "phones": ["amazon", "best_buy", "walmart", "target", "apple", "samsung", "costco"],
+    "clothing": ["amazon", "walmart", "target"],
+    "home": ["amazon", "walmart", "target", "costco"],
+    "appliances": ["best_buy", "costco", "amazon", "walmart"],
+    "gaming": ["amazon", "best_buy", "walmart", "target", "newegg", "costco"]
+  },
+  "search_tips": {
+    "electronics": "Include model number for exact matches",
+    "phones": "Specify carrier or unlocked version",
+    "computers": "Include specs like RAM, storage, processor",
+    "cameras": "Include lens kit info if applicable"
+  }
+}
+

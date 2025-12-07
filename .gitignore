@@ -3,3 +3,4 @@ venv/
 __pycache__/
 price_history.db
 cashback_data/chroma_db/
+search_data/chroma_db/
